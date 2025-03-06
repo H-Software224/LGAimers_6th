@@ -72,7 +72,91 @@
 ## 데이터 시각화
 
 - 시술 시기 코드<br>
-  ![시술 시기](image/시술시기.png)
+  ![시술 시기](image/cycle_year.png)
 - 시술 나이<br>
-  ![시술 나이](image/시술 당시 나이.png)
-  
+  ![시술 나이](image/cycle_age.png)
+- 시술 유형<br>
+  ![시술 유형](image/cycle_type.png)
+- 배란 자극 여부<br>
+  ![배란 자극 여부](image/ovulation_stimulation.png)
+- 단일 배아 이식 여부<br>
+  ![단일 배아 이식 여부](image/similar_embryo.png)
+- 남성, 여성, 부부 불임 원인에 대한 히트맵<br>
+  ![불임 원인의 히트맵](image/cause_heatmap.png)
+- 불임 원인의 사유에 대한 히트맵<br>
+  ![불임 원인 사유의 히트맵](image/cause_heatmap_2.png)
+- 불임 원인 - 배란 장애<br>
+  ![불임 원인 - 배란 장애](image/cause_ovulation.png)
+- 불임 원인 - 정자 운동성<br>
+  ![불임 원인 - 정자 운동성](image/cause_sperm_exercise.png)
+- 불임 원인 - 정자 면역학적 요인<br>
+  ![불임 원인 - 정자 면역학적 요인](image/cause_sperm_factor.png)
+- 불임 원인 - 정자 형태<br>
+  ![불임 원인 - 정자 형태](image/cause_sperm_form.png)
+- 불임 원인 - 정자 농도<br>
+  ![불임 원인 - 정자 농도](image/cause_sperm_percent.png)
+- 불임 원인 - 여성 요인<br>
+  ![불임 원인 - 여성 요인](image/cause_woman.png)
+- 총 시술 횟수<br>
+  ![총 시술 횟수](image/total_cycle_count.png)
+- 클리닉 내 총 시술 횟수<br>
+  ![클리닉 내 총 시술 횟수](image/clinic_total_count.png)
+- IVF 시술 횟수<br>
+  ![IVF 시술 횟수](image/ivf_cycle_count.png)
+- DI 시술 횟수<br>
+  ![DI 시술 횟수](image/di_cycle_count.png)
+- 총 임신 횟수<br>
+  ![총 임신 횟수](image/total_pregnancy_count.png)
+- IVF 임신 횟수<br>
+  ![IVF 임신 횟수](image/ivf_pregnancy_count.png)
+- DI 임신 횟수<br>
+  ![DI 임신 횟수](image/di_preganacy_count.png)
+- 총 출산 횟수<br>
+  ![총 출산 횟수](image/total_birth_count.png)
+- IVF 출산 횟수<br>
+  ![IVF 출산 횟수](image/ivf_birth_count.png)
+- DI 출산 횟수<br>
+  ![DI 출산 횟수](image/di_birth_count.png)
+- 난자 기증자 나이<br>
+  ![난자 기증자 나이](image/egg_donor_age.png)
+- 정자 기증자 나이<br>
+  ![정자 기증자 나이](image/sperm_donor_age.png)
+- 총 생성 배아 수에 대한 시술 당시 나이에 따른 임신 성공 여부 상자수염 그래프 시각화
+  ![상자수염 그래프 시각화_1](image/total_embryo_cycle.png)
+- 총 생성 배아 수에 대한 시술 유형에 따른 상자수염 그래프 시각화
+  ![상자수염 그래프 시각화 2](image/type_total_embryo.png)
+
+## 데이터 모델링
+우선 데이터의 임신성공여부에 대해서 맞는 것과 아닌 것에 대한 불균형 편차가 심하다는 것을 알게 되었다. 따라서, 모델링 하기전에 resample 기법중 SMOTEENN 방법을 이용하여서 임신 성공 여부에 대한 비율을 동등하게 하였다.
+
+```
+# SMOTEENN 적용
+smote_enn = SMOTEENN(sampling_strategy='auto', random_state=42)
+X_resampled, y_resampled = smote_enn.fit_resample(X_train_encoded, y)
+
+# 리샘플링된 데이터 확인 (선택 사항)
+print(f"Original dataset shape: {X.shape}")
+print(f"Resampled dataset shape: {X_resampled.shape}")
+```
+
+Resampling한 데이터 셋을 통해서 분류 모델들 중 대표적으로 boost를 이용한 앙상블 모델들 중 LightGBM 모델을 이용하여서 모델링을 학습시켰습니다. 
+
+LightGBM 모델의 HyperParameter를 이 프로젝트에서는 n_estimators를 400, n_jobs을 -1, 그리고 random_state를 42로 하였습니다. 그리고 학습시킬 때 교차 검증을 이용하여서 훈련 데이터 셋을 다시 훈련, 검증 데이터셋으로 분할시켜서 일부 eval_set을 검증 데이터셋으로 매개로 하였으며, eval_metric가 'logloss'로 해야 classifier로 학습시킬 수 있기 때문에 이런 hyperparmeter로 모델 학습시켰습니다.
+
+```
+lgb_roc_model = LGBMClassifier(n_estimators = 400, n_jobs=-1, random_state=42)
+# LGBM
+lgb_roc_model.fit(
+    X = X_train,
+    y = y_train,
+    eval_set=[(X_valid, y_valid)],
+    eval_metric='logloss'
+)
+lgb_roc_pred = lgb_roc_model.predict_proba(X_valid)[:, 1]
+lgb_roc_roc = roc_auc_score(y_valid, lgb_roc_pred)
+print('LGBM ROC model - ROC AUC: %.4f' % (lgb_roc_roc))
+```
+
+## 데이터 교차 검증 및 평가(ROC-AUC 그래프)
+이를 매개로 평가를 한 결과 다음 그림과 같이 roc-auc 그래프의 시각화한 것과 같습니다. DACON에서 학습시킨 데이터로 예측한 결과  roc_auc score은 0.98로 나오게 되었으며, Public score가 0.73103로 성능을 보였습니다.
+![roc_auc 그래프](image/roc_auc_score.png)
